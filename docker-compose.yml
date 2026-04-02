@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Redis 服务
+  redis:
+    image: redis:7-alpine
+    container_name: video_slicer_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # FastAPI 应用
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video_slicer_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/uploads
+      - ./logs:/app/logs
+    environment:
+      - DATABASE_URL=sqlite:///./video_slicer.db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=your-production-secret-key-change-this
+      - DEBUG=False
+      - OLLAMA_URL=http://ollama:11434
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video_slicer_celery_worker
+    command: celery -A celery_app.app worker --loglevel=info --concurrency=4
+    volumes:
+      - uploads:/app/uploads
+    environment:
+      - DATABASE_URL=sqlite:///./video_slicer.db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OLLAMA_URL=http://ollama:11434
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Beat (定时任务)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video_slicer_celery_beat
+    command: celery -A celery_app.app beat --loglevel=info
+    volumes:
+      - uploads:/app/uploads
+    environment:
+      - DATABASE_URL=sqlite:///./video_slicer.db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Ollama (可选AI服务)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: video_slicer_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  uploads:
+  ollama_data:
+
+networks:
+  default:
+    name: video_slicer_network

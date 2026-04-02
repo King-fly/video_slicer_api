@@ -1,6 +1,4 @@
 import os
-import uuid
-from typing import List, Tuple
 import logging
 
 from celery_app.app import app
@@ -10,9 +8,7 @@ try:
 except ImportError:
     ProgressRecorder = None
 
-from domain.entities.video import Video
 from domain.entities.slice import Slice
-from domain.entities.task import Task
 from domain.services.video_analyzer import VideoAnalyzer
 from infrastructure.database.repositories.video_repo import VideoRepository
 from infrastructure.database.repositories.slice_repo import SliceRepository

@@ -1,6 +1,3 @@
-import os
-import uuid
-from typing import List, Optional
 import logging
 
 from celery_app.app import app

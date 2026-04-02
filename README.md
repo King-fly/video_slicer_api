@@ -166,17 +166,106 @@ ruff format .
 
 ## 生产环境部署
 
-1. 修改 `.env` 中的 `DEBUG=False`
-2. 设置安全的 `SECRET_KEY`
-3. 配置 CORS 白名单
-4. 使用 Nginx 反向代理
-5. 使用 Gunicorn 替代 uvicorn
-
-示例生产启动命令：
+### Docker Compose (开发/测试)
 
 ```bash
-gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+# 构建并启动所有服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
 ```
+
+### 使用 Makefile
+
+```bash
+make build         # 构建镜像
+make up            # 启动服务
+make down          # 停止服务
+make logs          # 查看日志
+make clean         # 清理
+```
+
+### Kubernetes (生产)
+
+#### 前置要求
+- Kubernetes 集群 (Minikube, K3s, EKS, GKE 等)
+- kubectl 已配置
+
+#### 部署步骤
+
+1. **构建镜像**
+   ```bash
+   docker build -t video-slicer:latest .
+   ```
+
+2. **配置 Secret**
+   编辑 `k8s/01-secret.yaml` 设置生产环境密钥
+
+3. **部署到集群**
+   ```bash
+   chmod +x deploy.sh
+   ./deploy.sh
+   ```
+
+4. **验证部署**
+   ```bash
+   kubectl get pods -n video-slicer
+   ```
+
+#### K8s 资源说明
+
+| 资源 | 文件 | 说明 |
+|------|------|------|
+| Namespace | 00-namespace.yaml | 独立命名空间 |
+| Secret | 01-secret.yaml | 敏感配置 |
+| ConfigMap | 02-configmap.yaml | 非敏感配置 |
+| Redis | 10-redis.yaml | 消息队列 |
+| API | 20-api.yaml | FastAPI 服务 + HPA |
+| Celery | 30-celery.yaml | Worker + Beat |
+| Ingress | 40-ingress.yaml | HTTP 入口 |
+
+#### 扩缩容
+
+```bash
+# 扩展 API 实例
+kubectl scale deployment video-slicer-api -n video-slicer --replicas=5
+
+# 扩展 Worker 实例
+kubectl scale deployment video-slicer-celery-worker -n video-slicer --replicas=4
+
+# 自动扩缩容 (已配置 HPA)
+# 根据 CPU 使用率自动调整副本数
+```
+
+#### 监控日志
+
+```bash
+# API 日志
+kubectl logs -n video-slicer -l app=video-slicer-api -f
+
+# Worker 日志
+kubectl logs -n video-slicer -l app=video-slicer-celery-worker -f
+
+# Port forward 访问
+kubectl port-forward -n video-slicer svc/video-slicer-api 8000:80
+```
+
+#### 持久化存储
+
+生产环境建议使用 PersistentVolumeClaim：
+- 上传文件: 50Gi+
+- Redis 数据: 10Gi
+- 可使用 NFS、云存储 (AWS EBS, GCE PD)
+
+### Helm Chart (可选)
+
+如需 Helm 管理，可将 k8s/ 目录转换为 Helm chart。
+
+---
 
 ## 许可证
 
